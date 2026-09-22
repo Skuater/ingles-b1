@@ -449,7 +449,7 @@ function vistaDatos() {
     <p class="ayuda">Exporta una copia cada domingo, junto con la fila del registro. Si borras los datos de Chrome o cambias de móvil, la copia es lo único que conserva el historial.</p>
     <p class="ayuda">${S.aj.get('ultimaExport') ? `Última copia: ${esc(fmtLarga(parseISO(S.aj.get('ultimaExport'))))}.` : 'Todavía no hay ninguna copia exportada.'}</p>
     <button class="boton" data-acc="exportar">Exportar copia (JSON)</button>
-    <label class="boton sec" for="imp">Importar copia</label><input id="imp" type="file" accept="application/json,.json" hidden>
+    <label class="boton sec" for="imp">Importar copia</label><input id="imp" type="file" hidden>
     <h2 class="h2">Fecha de prueba</h2>
     <p class="ayuda">Sirve para probar la app antes del 5 de octubre. Déjala vacía para usar la fecha real.</p>
     <div class="en-linea"><label for="fsim">Fecha simulada</label><input id="fsim" type="date" value="${fs}" min="${PLAN.inicioS0}" max="2027-05-02"></div>
@@ -457,7 +457,7 @@ function vistaDatos() {
     <h2 class="h2">Borrar todo</h2>
     <p class="ayuda">Elimina sesiones, mediciones y semáforos. No se puede deshacer.</p>
     <button class="boton peligro" data-acc="borrar-todo">Borrar todos los datos</button>
-    <p class="version">Versión 1.1, diseño de fichas. Plan v3.</p>`;
+    <p class="version">Versión 1.2, diseño de fichas. Plan v3.</p>`;
 }
 
 /* ================= Hojas (formularios) ================= */
@@ -665,22 +665,30 @@ async function copiar(texto) {
 }
 
 async function exportar() {
+  await setAjuste('ultimaExport', iso(hoy()));
+  const ajustes = [...S.aj].filter(([k]) => k !== 'fechaSimulada').map(([k, v]) => ({ k, v }));
   const datos = { app: 'ingles-b1', version: 1, exportado: new Date().toISOString(),
-    sesiones: [...S.ses.values()], mediciones: [...S.med.values()], semaforos: [...S.sem.values()], ajustes: [...S.aj].map(([k, v]) => ({ k, v })) };
+    sesiones: [...S.ses.values()], mediciones: [...S.med.values()], semaforos: [...S.sem.values()], ajustes };
   const url = URL.createObjectURL(new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' }));
   const a = document.createElement('a'); a.href = url; a.download = `ingles-b1-copia-${iso(hoyReal())}.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
-  await setAjuste('ultimaExport', iso(hoy()));
   render(); toast('Copia exportada en Descargas');
 }
 async function importar(file) {
   let d;
-  try { d = JSON.parse(await file.text()); } catch { toast('El archivo no es una copia válida.'); return; }
-  if (d.app !== 'ingles-b1' || !Array.isArray(d.sesiones)) { toast('El archivo no es una copia de esta app.'); return; }
-  if (!confirm(`Esto sustituye los datos actuales por la copia del ${d.exportado.slice(0, 10)}. ¿Continuar?`)) return;
+  try { d = JSON.parse(await file.text()); } catch { toast('Ese archivo no es una copia de la app. Elige un ingles-b1-copia-….json'); return; }
+  if (!d || d.app !== 'ingles-b1' || !Array.isArray(d.sesiones)) { toast('Ese archivo no es una copia de la app. Elige un ingles-b1-copia-….json'); return; }
+  const fechaCopia = (d.exportado || '').slice(0, 10);
+  if (!confirm(`Esto sustituye los datos actuales por la copia del ${fechaCopia}. ¿Continuar?`)) return;
+  d.ajustes = (d.ajustes || []).filter((x) => x.k !== 'fechaSimulada');
+  if (!d.ajustes.some((x) => x.k === 'ultimaExport') && fechaCopia) d.ajustes.push({ k: 'ultimaExport', v: fechaCopia });
   for (const s of ['sesiones', 'mediciones', 'semaforos', 'ajustes']) { await DB.vaciar(s); for (const x of d[s] || []) await DB.poner(s, x); }
   S.ses.clear(); S.med.clear(); S.sem.clear(); S.aj.clear();
-  await cargar(); render(); toast('Copia importada');
+  await cargar(); S.dia = null; render();
+  const fechas = d.sesiones.map((x) => x.fecha).sort();
+  const rango = fechas.length ? `, del ${fmtCorta(parseISO(fechas[0]))} al ${fmtCorta(parseISO(fechas.at(-1)))}` : '';
+  const tareas = d.ajustes.filter((x) => x.k.startsWith('s0:')).length;
+  toast(`Copia importada: ${d.sesiones.length} sesiones, ${(d.mediciones || []).length} mediciones${tareas ? `, ${tareas} tareas de S0` : ''}${rango}.`);
 }
 
 document.addEventListener('click', async (e) => {
