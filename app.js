@@ -13,6 +13,7 @@ const fmtH = (min) => (min / 60).toFixed(1).replace('.', ',');
 const fmtLarga = (d) => cap(new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(d));
 const fmtCorta = (d) => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(d).replace('.', '');
 const DIAS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const CODIGO = { L: 'LI', S: 'SP', V: 'VG', R: 'RE', W: 'WR', C: 'CO', X: 'SI', D: 'DG' };
 
 function hoyReal() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 function hoy() { const f = S.aj.get('fechaSimulada'); return f ? parseISO(f) : hoyReal(); }
@@ -198,8 +199,9 @@ function vistaHoy() {
   const pct = plan ? Math.min(100, (hecho / plan) * 100) : 0;
   const r = resumen(n);
 
+  const laborable = diaIdx(f) < 5;
   let html = nav + `<section class="cabecera">
-      <h1 class="num-sem"><span class="s">S</span>${n}</h1>
+      <h1 class="num-sem"><span class="s">Semana</span>${n}</h1>
       <div class="cab-txt">
         <p class="fase">${esc(FASES[s.fase])}</p>
         <p class="sub-cab">${esc(s.gram)}</p>
@@ -207,7 +209,7 @@ function vistaHoy() {
       </div></section>
     <div class="progreso-dia" role="img" aria-label="${hecho} de ${plan} minutos">
       <div class="pd-barra"><i style="width:${pct}%"></i></div>
-      <p><b class="cifra">${hecho}</b> de ${plan} min hoy</p>
+      <p><span>${laborable ? '17:00' : '0'}</span><span><b class="cifra">${hecho}</b> de ${plan} min</span><span>${laborable ? '18:15' : plan}</span></p>
     </div>`;
 
   if (!futuro && iso(f) === iso(t)) {
@@ -220,7 +222,7 @@ function vistaHoy() {
   }
 
   html += `<ul class="tiras">${bl.map((b) => tiraHTML(f, b, futuro)).join('')}</ul>`;
-  html += `<p class="ayuda">${futuro ? 'Día futuro: puedes verlo, pero no registrarlo.' : 'Mantén pulsada una tira para completarla. Tócala para ajustar minutos o anotar resultados.'}</p>`;
+  html += `<p class="ayuda">${futuro ? 'Día futuro: puedes verlo, pero no registrarlo.' : 'Mantén pulsada una ficha para cerrarla: se desplaza a la derecha. Tócala para ajustar minutos o anotar resultados.'}</p>`;
   html += `<button class="resumen-sem" data-acc="ir-semana" data-n="${n}">
       <span>Semana ${n}</span><span><b class="cifra">${fmtH(r.hecho)}</b> de ${fmtH(r.plan)} h</span></button>`;
   if (iso(f) === iso(t)) html += avisoCopia(n);
@@ -257,29 +259,29 @@ function avisoCopia(n) {
 function tiraHTML(f, b, futuro) {
   const s = S.ses.get(clave(f, b));
   const est = s ? s.estado : 'pendiente';
-  const min = est === 'parcial' ? `${s.minReal}<small>/${b.min}</small>` : est === 'saltada' ? '—' : b.min;
-  const marca = est === 'hecha' ? '<span class="check" aria-hidden="true">✓</span>' : '';
+  const min = est === 'parcial' ? `${s.minReal}<small>/${b.min}</small>` : est === 'saltada' ? '—' : est === 'hecha' ? s.minReal : b.min;
+  const etq = { pendiente: 'min', hecha: 'hecho', parcial: 'parcial', saltada: 'saltada' }[est];
   const aria = { pendiente: 'pendiente', hecha: 'completada', parcial: 'parcial', saltada: 'saltada' }[est];
   return `<li><button class="tira est-${est}${futuro ? ' futura' : ''}" style="--c:var(--sk-${b.sk})" data-b="${b.id}" aria-label="${esc(b.nombre)}, ${b.min} minutos, ${aria}">
-    <span class="barra"></span>
+    <span class="barra"></span><span class="cod">${CODIGO[b.sk]}</span>
     <span class="txt"><span class="nombre">${esc(b.nombre)}</span><span class="detalle">${esc(detalleDe(b))}</span></span>
-    <span class="min cifra">${marca}${min}</span></button></li>`;
+    <span class="min"><small class="etq">${etq}</small><span class="cifra">${min}</span></span></button></li>`;
 }
 
 function vistaS0(f) {
   const faltan = diasEntre(hoy(), parseISO(PLAN.inicioS1));
   const tarde = (t) => TAREAS_S0.filter((x) => x.tarde === t).map((x) => {
     const hecha = S.aj.get('s0:' + x.id);
-    return `<li><button class="tira ${hecha ? 'est-hecha' : 'est-pendiente'}" style="--c:var(--ink)" data-s0="${x.id}" aria-label="${esc(x.nombre)}, ${hecha ? 'hecha' : 'pendiente'}">
-      <span class="barra"></span><span class="txt"><span class="nombre">${esc(x.nombre)}</span><span class="detalle">${esc(x.sub)}</span></span>
-      <span class="min cifra">${hecha ? '<span class="check">✓</span>' : ''}</span></button></li>`;
+    return `<li><button class="tira ${hecha ? 'est-hecha' : 'est-pendiente'}" style="--c:var(--sk-D)" data-s0="${x.id}" aria-label="${esc(x.nombre)}, ${hecha ? 'hecha' : 'pendiente'}">
+      <span class="barra"></span><span class="cod">T${x.tarde}</span><span class="txt"><span class="nombre">${esc(x.nombre)}</span><span class="detalle">${esc(x.sub)}</span></span>
+      <span class="min"><small class="etq">${hecha ? 'hecha' : ''}</small><span class="cifra">${hecha ? '✓' : ''}</span></span></button></li>`;
   }).join('');
-  return `<section class="cabecera"><h1 class="num-sem"><span class="s">S</span>0</h1>
+  return `<section class="cabecera"><h1 class="num-sem"><span class="s">Semana</span>0</h1>
       <div class="cab-txt"><p class="fase">Preparación</p><p class="sub-cab">Dos tardes, del 22 de septiembre al 4 de octubre</p>
       <p class="hito">${faltan > 0 ? `Faltan ${faltan} días para S1` : 'S1 empieza hoy'}</p></div></section>
     <h2 class="h2">Tarde 1, unos 55 min</h2><ul class="tiras">${tarde(1)}</ul>
     <h2 class="h2">Tarde 2, unos 35 min</h2><ul class="tiras">${tarde(2)}</ul>
-    <p class="ayuda">Mantén pulsada una tarea para marcarla. Estas tareas no cuentan en las horas del plan. Primera sesión: lunes 5 de octubre a las 17:00, Murphy U1 con la regla del 90 %.</p>`;
+    <p class="ayuda">Mantén pulsada una ficha para cerrarla. Estas tareas no cuentan en las horas del plan. Primera sesión: lunes 5 de octubre a las 17:00, Murphy U1 con la regla del 90 %.</p>`;
 }
 
 /* ================= Vista: Semana ================= */
@@ -303,8 +305,8 @@ function vistaSemana() {
     const p = r.por[k];
     const cuota = r.hecho ? Math.round((p.hecho / r.hecho) * 100) : 0;
     const cuotaPlan = r.plan ? Math.round((p.plan / r.plan) * 100) : 0;
-    return `<tr><td><span class="chip" style="background:var(--sk-${k})"></span>${esc(DESTREZAS[k])}</td>
-      <td class="cifra">${p.hecho}<small>/${p.plan}</small></td><td class="cifra">${cuota}<small>/${cuotaPlan} %</small></td></tr>`;
+    return `<div class="ficha-fila${p.hecho ? '' : ' apagada'}" style="--c:var(--sk-${k})"><span class="barra"></span><span class="cod">${CODIGO[k]}</span>
+      <span class="nom">${esc(DESTREZAS[k])}</span><span class="val cifra">${p.hecho}<small>/${p.plan}</small></span><span class="val cifra">${cuota}<small>/${cuotaPlan} %</small></span></div>`;
   }).join('');
   const ank = S.med.get(`anki:S${n}|anki`);
   const alertas = alertasSemana(n);
@@ -324,8 +326,9 @@ function vistaSemana() {
     </div>
     ${alertas.map(alertaHTML).join('')}
     <h2 class="h2">Anki, ${r.ankiDias} de 7 días</h2><div class="fila-anki">${anki}</div>
-    <h2 class="h2">Reparto por destreza</h2>
-    <table class="tabla"><thead><tr><th>Destreza</th><th>Min</th><th>Cuota</th></tr></thead><tbody>${filas}</tbody></table>
+    <h2 class="h2 sin-margen">Reparto por destreza</h2>
+    <div class="cab-fichas"><span></span><span>min</span><span>cuota</span></div>
+    <div class="portafichas">${filas}</div>
     <p class="ayuda">Cuota: porcentaje del tiempo hecho frente al previsto por el plan para esta semana.</p>
     <h2 class="h2">Retención de Anki</h2>
     <div class="en-linea"><label for="anki-ret">% de retención en las estadísticas de Anki</label>
@@ -406,10 +409,11 @@ function vistaRuta() {
 function vistaCriterios() {
   const { c, soporte, cumplidas } = criterios();
   const n = semanaActual();
-  const fila = (x) => `<article class="crit">
-      <header><h2>${esc(x.nombre)}</h2><span class="estado e-${x.estado}">${ESTADO_TXT[x.estado]}</span></header>
+  const fila = (x) => `<article class="crit${x.estado === 'sin' ? ' apagada' : ''}" style="--c:var(--sk-${x.k || 'V'})">
+      <span class="barra"></span><span class="cod">${CODIGO[x.k || 'V']}</span>
+      <div class="crit-cuerpo"><header><h2>${esc(x.nombre)}</h2><span class="estado e-${x.estado}">${ESTADO_TXT[x.estado]}</span></header>
       ${x.lineas.map((l) => `<p>${esc(l)}</p>`).join('')}
-      ${sparkline(x.serie, x.umbral, x.invertida)}</article>`;
+      ${sparkline(x.serie, x.umbral, x.invertida)}</div></article>`;
   let regla = '';
   if (n >= 24) regla = cumplidas === 4 ? 'Con 4 de 4 en S24 y S26: reserva en S27 y examen en S29.' : cumplidas === 3 ? 'Con 3 de 4: dos semanas de refuerzo en la destreza fallida, recomprobación en S28 y examen en S30.' : 'Con 2 de 4 o menos: aplazar a junio de 2027 con nueva reserva.';
   else if (n >= 20) {
@@ -428,8 +432,10 @@ function vistaCriterios() {
   return `<section class="cabecera sem-cab"><p class="grande cifra">${cumplidas}<span class="de"> de 4 destrezas</span></p>
       <p class="sub-cab">Criterios de salida de la sección 9. No se reserva el examen hasta cumplirlos.</p></section>
     ${regla ? `<p class="ayuda regla">${regla}</p>` : ''}
-    ${c.map(fila).join('')}${fila(soporte)}
-    <p class="ayuda">El soporte no cuenta en el 4 de 4. Murphy usa la media de las últimas 5 unidades medidas.</p>
+    <div class="portafichas">${c.map(fila).join('')}</div>
+    <p class="h2">Soporte, no cuenta en el 4 de 4</p>
+    <div class="portafichas">${fila(soporte)}</div>
+    <p class="ayuda">Murphy usa la media de las últimas 5 unidades medidas.</p>
     <button class="boton" data-acc="medir">Añadir una medición</button>
     <h2 class="h2">Últimas mediciones</h2>
     ${recientes.length ? `<ul class="lista-med">${recientes.map((m) => `<li><span>${fmtCorta(parseISO(m.fecha))}</span><span>${NOM[m.tipo] || m.tipo}${m.extra && m.extra.unidad ? ` U${esc(m.extra.unidad)}` : ''}</span><span class="cifra">${val(m)}</span><button class="enlace" data-acc="borrar-med" data-id="${esc(m.id)}">Borrar</button></li>`).join('')}</ul>` : '<p class="vacio">Las mediciones aparecen aquí al anotar resultados en las tiras de Hoy.</p>'}`;
@@ -451,7 +457,7 @@ function vistaDatos() {
     <h2 class="h2">Borrar todo</h2>
     <p class="ayuda">Elimina sesiones, mediciones y semáforos. No se puede deshacer.</p>
     <button class="boton peligro" data-acc="borrar-todo">Borrar todos los datos</button>
-    <p class="version">Versión 1.0 · Plan v3</p>`;
+    <p class="version">Versión 1.1, diseño de fichas. Plan v3.</p>`;
 }
 
 /* ================= Hojas (formularios) ================= */
